@@ -18,27 +18,11 @@ def main():
     time.sleep(1)
 
     print("\nPeer 2 joining the network\n")
-
-    join_msg = {
-        "type": "join",
-        "address": "127.0.0.1",
-        "port_number": 8081
-    }
-
-    response = peer2.send_msg(addr=("127.0.0.1", 8080), msg=join_msg)
-    print(f"join response: {response}")
+    peer2.join_network(("127.0.0.1", 8080))
     time.sleep(1)
 
     print("\nPeer 3 joining the network\n")
-
-    join_msg = {
-        "type": "join",
-        "address": "127.0.0.1",
-        "port_number": 8082
-    }
-
-    response = peer3.send_msg(addr=("127.0.0.1", 8080), msg=join_msg)
-    print(f"join response: {response}")
+    peer3.join_network(("127.0.0.1", 8080))
     time.sleep(1)
 
     print("\nPeer 2 searching for file\n")
@@ -70,6 +54,9 @@ def main():
     print(f"get peers response: {response}")
 
     time.sleep(3)
+
+    print("\nPeer 2 downloading file")
+    peer2.download("test1.txt")
 
 
 if __name__ == "__main__":

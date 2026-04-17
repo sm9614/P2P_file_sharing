@@ -3,10 +3,10 @@ import socket
 import threading
 import json
 import math
+import hashlib
 
 
 class Peer:
-
 
     def __init__(self, host_addr, port_number, shared_directory):
         self.host_addr = host_addr
@@ -43,14 +43,17 @@ class Peer:
             if file.is_file():
                 size = file.stat().st_size
                 chunks = math.ceil(size / 1024)
+                with open(file, "rb") as f:
+                    file_hash = hashlib.file_digest(f, "sha256").hexdigest()
 
                 self.shared_files[file.name] = {
                     "path": str(file),
                     "size": size,
-                    "chunks": chunks
+                    "chunks": chunks,
+                    "hash": file_hash
                 }
         print(f"indexed files: {self.shared_files}")
-    
+
     def join(self, conn, msg):
         peer = (msg.get("address"), msg.get("port_number"))
 
@@ -63,7 +66,31 @@ class Peer:
                 "peers": self.peers
             }
         conn.send(json.dumps(response).encode())
-    
+
+    def join_network(self, bootstrap_addr):
+        join_msg = {
+            "type": "join",
+            "address": self.host_addr,
+            "port_number": self.port_number
+        }
+
+        response = self.send_msg(bootstrap_addr, join_msg)
+
+        if response and response.get("type") == "join_ack":
+            with self.lock:
+                for peer in response.get("peers", []):
+                    if tuple(peer) not in self.peers:
+                        self.peers.append(tuple(peer))
+
+        for peer in self.peers:
+            if tuple(peer) == (self.host_addr, self.port_number):
+                continue
+
+            if tuple(peer) == bootstrap_addr:
+                continue
+
+            self.send_msg(tuple(peer), join_msg)
+
     def get_peers(self, conn):
         with self.lock:
             peers = list(self.peers)
@@ -73,7 +100,7 @@ class Peer:
             "peers": peers
         }
         conn.send(json.dumps(response).encode())
-    
+
     def search(self, conn, msg):
         filename = msg.get("filename")
 
@@ -85,7 +112,8 @@ class Peer:
                 "type": "search_response",
                 "exists": True,
                 "size": file_info["size"],
-                "chunks": file_info["chunks"]
+                "chunks": file_info["chunks"],
+                "hash": file_info["hash"]
             }
 
         else:
@@ -94,7 +122,7 @@ class Peer:
                 "exists": False,
             }
         conn.send(json.dumps(response).encode())
-    
+
     def request_chunk(self, conn, msg):
         filename = msg.get("filename")
         chunk_idx = msg.get("chunk_index")
@@ -117,16 +145,16 @@ class Peer:
                     "type": "chunk_response",
                     "exists": True,
                     "chunk_index": chunk_idx,
-                    "data": chunk.hex() 
+                    "data": chunk.hex()
                 }
+
             except FileNotFoundError:
                 print("file not found")
+
             except Exception as e:
                 print(f"error: {e}")
-        
-        conn.send(json.dumps(response).encode())
-                
 
+        conn.send(json.dumps(response).encode())
 
     def handle_connection(self, conn, addr):
         try:
@@ -151,8 +179,6 @@ class Peer:
             elif msg_type == "request_chunk":
                 self.request_chunk(conn, msg)
 
-            elif msg_type == "ping":
-                pass
             else:
                 print(f"unknow message type: {msg_type}")
 
@@ -161,8 +187,10 @@ class Peer:
 
         except ConnectionError as e:
             print(f"Connection failed: {e}")
+
         except Exception as e:
             print(f"error: {e}")
+
         finally:
             conn.close()
 
@@ -180,7 +208,72 @@ class Peer:
 
         except ConnectionError as e:
             print(f"Connection failed: {e}")
+
         except Exception as e:
             print(f"error: {e}")
+
         finally:
             sock.close()
+
+    def download(self, filename):
+        for peer in self.peers:
+            if peer == (self.host_addr, self.port_number):
+                continue
+
+            search_msg = {
+                "type": "search",
+                "filename": filename
+            }
+
+            response = self.send_msg(peer, search_msg)
+
+            if not response or not response.get("exists"):
+                continue
+
+            chunks = response.get("chunks")
+            original_hash = response.get("hash")
+
+            print(f"Downloading {filename} from {peer}")
+            print(f"Total chunks: {chunks}")
+
+            file_data = bytearray()
+
+            for i in range(chunks):
+                chunk_msg = {
+                    "type": "request_chunk",
+                    "filename": filename,
+                    "chunk_index": i,
+                }
+
+                response = self.send_msg(peer, chunk_msg)
+
+                if not response or not response.get("exists") or "data" not in response:
+                    print(f"Failed to get chunk {i}")
+                    return
+
+                try:
+                    data = bytes.fromhex(response["data"])
+
+                except Exception:
+                    print(f"Failed to decode chunk {i}")
+                    return
+
+                file_data.extend(data)
+
+            path = Path(self.shared_directory)/filename
+
+            with open(path, "wb") as f:
+                f.write(file_data)
+
+            with open(path, "rb") as f:
+                file_hash = hashlib.file_digest(f, "sha256").hexdigest()
+
+            if original_hash != file_hash:
+                print("Hash does not match, deleting file")
+                path.unlink(missing_ok=True)
+                return
+
+            print("File downloaded successfully")
+            self.index_file()
+            return
+        print("file not found")
