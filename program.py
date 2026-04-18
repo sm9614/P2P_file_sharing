@@ -44,7 +44,7 @@ def main():
             elif choice[0] == "get":
                 print(peer.peers)
 
-            elif choice[0] == "quit":
+            elif choice[0] == "exit":
                 break
 
             else:
