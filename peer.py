@@ -81,6 +81,9 @@ class Peer:
                 for peer in response.get("peers", []):
                     if tuple(peer) not in self.peers:
                         self.peers.append(tuple(peer))
+            print("joined successfully")
+        else:
+            print("unable to join network")
 
         for peer in self.peers:
             if tuple(peer) == (self.host_addr, self.port_number):
@@ -122,6 +125,25 @@ class Peer:
                 "exists": False,
             }
         conn.send(json.dumps(response).encode())
+
+    def search_network(self, filename):
+        found = False
+        for peer in self.peers:
+            if peer == (self.host_addr, self.port_number):
+                continue
+
+            search_msg = {
+                "type": "search",
+                "filename": filename
+            }
+
+            response = self.send_msg(peer, search_msg)
+
+            if response and response.get("exists"):
+                found = True
+                print(f"Found {filename} on peer {peer}" )
+        if not found:
+            print(f"Could not find {filename} on any peers")
 
     def request_chunk(self, conn, msg):
         filename = msg.get("filename")
