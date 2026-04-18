@@ -3,6 +3,9 @@ import argparse
 
 
 def main():
+    """
+    The CLI used for the p2p network
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("host", help="The address of the peer")
     parser.add_argument("port", type=int, help="The port number of the peer")

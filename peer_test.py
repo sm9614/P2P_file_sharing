@@ -3,6 +3,9 @@ import time
 
 
 def main():
+    """
+    test file that create a few peers and test the requests and responses
+    """
     peer1 = Peer(host_addr="127.0.0.1", port_number=8080, shared_directory="./shared1")
     peer2 = Peer(host_addr="127.0.0.1", port_number=8081, shared_directory="./shared2")
     peer3 = Peer(host_addr="127.0.0.1", port_number=8082, shared_directory="./shared3")
